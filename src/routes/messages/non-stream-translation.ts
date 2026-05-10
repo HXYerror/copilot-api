@@ -1,3 +1,5 @@
+import consola from "consola"
+
 import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
@@ -213,12 +215,20 @@ function mapContent(
         break
       }
       case "image": {
-        contentParts.push({
-          type: "image_url",
-          image_url: {
-            url: `data:${block.source.media_type};base64,${block.source.data}`,
-          },
-        })
+        if (block.source.type === "base64") {
+          contentParts.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${block.source.media_type};base64,${block.source.data}`,
+            },
+          })
+        } else {
+          // URL images are rejected by Copilot upstream — skip silently
+          // (type kept for fidelity when round-tripping through native path)
+          consola.warn(
+            "URL image source not supported in translation path — skipping",
+          )
+        }
 
         break
       }
@@ -302,7 +312,9 @@ export function translateToAnthropic(
     }
   }
 
-  // Note: GitHub Copilot doesn't generate thinking blocks, so we don't include them in responses
+  // Note: the translation path routes Claude models via /chat/completions which
+  // does not return thinking blocks. For thinking block support use the native
+  // Anthropic pass-through path (create-messages-native.ts).
 
   return {
     id: response.id,
