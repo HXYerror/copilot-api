@@ -11,8 +11,10 @@ import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { setupCopilotToken, setupGitHubToken } from "./lib/token"
-import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
+import { cacheModels } from "./lib/utils"
 import { server } from "./server"
+import { getCopilotChatVersion } from "./services/get-copilot-chat-version"
+import { getVSCodeVersion } from "./services/get-vscode-version"
 
 interface RunServerOptions {
   port: number
@@ -48,7 +50,13 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   state.showToken = options.showToken
 
   await ensurePaths()
-  await cacheVSCodeVersion()
+  ;[state.vsCodeVersion, state.copilotChatVersion] = await Promise.all([
+    getVSCodeVersion(),
+    getCopilotChatVersion(),
+  ])
+  consola.info(
+    `VS Code: ${state.vsCodeVersion}  Copilot Chat: ${state.copilotChatVersion}`,
+  )
 
   if (options.githubToken) {
     state.githubToken = options.githubToken
