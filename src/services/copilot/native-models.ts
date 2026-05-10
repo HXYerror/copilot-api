@@ -40,14 +40,12 @@ export function isNativeAnthropicModel(modelId: string): boolean {
  * Covers all current Claude variants served by Copilot.
  */
 function matchesAnthropicPrefix(modelId: string): boolean {
-  return modelId.startsWith("claude-") || modelId.startsWith("claude_")
+  return modelId.startsWith("claude-")
 }
 
 /**
- * Return the full list of model IDs that support native Anthropic pass-through,
- * derived from `state.models`.  Useful for logging / diagnostics.
- *
- * Falls back to an empty array if the models list has not been fetched yet.
+ * Returns all model IDs that support native Anthropic pass-through.
+ * Used for diagnostics and startup logging.
  */
 export function nativeAnthropicModelIds(): ReadonlyArray<string> {
   if (!state.models?.data) return []

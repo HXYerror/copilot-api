@@ -72,7 +72,6 @@ async function handleNative(
       data?: string
       event?: string
     }>) {
-      if (rawEvent.data === "[DONE]") break
       if (!rawEvent.data) continue
 
       // Parse to log but forward the original JSON verbatim
@@ -85,7 +84,10 @@ async function handleNative(
         })
       } catch {
         // Malformed chunk — skip
-        consola.warn("Could not parse native SSE chunk:", rawEvent.data)
+        consola.warn(
+          "Could not parse native SSE chunk:",
+          rawEvent.data.slice(0, 200),
+        )
       }
     }
   })

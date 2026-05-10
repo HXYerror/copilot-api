@@ -37,7 +37,7 @@ export const createMessagesNative = async (
   if (!state.copilotToken) throw new Error("Copilot token not found")
 
   const hasVision = messageHasImages(payload)
-  const headers = buildNativeHeaders(hasVision)
+  const headers = buildNativeHeaders(hasVision, Boolean(payload.stream))
 
   const upstream = `${copilotBaseUrl(state)}/v1/messages`
   consola.debug("Native Anthropic upstream:", upstream)
@@ -74,7 +74,10 @@ export const createMessagesNative = async (
  * header.  We reuse `copilotHeaders()` for auth/agent headers and then layer the
  * Anthropic-specific ones on top.
  */
-function buildNativeHeaders(vision: boolean): Record<string, string> {
+function buildNativeHeaders(
+  vision: boolean,
+  stream: boolean,
+): Record<string, string> {
   const base = copilotHeaders(state, vision)
 
   // The native /v1/messages endpoint expects these Anthropic headers
@@ -84,10 +87,9 @@ function buildNativeHeaders(vision: boolean): Record<string, string> {
     // Enable beta features: extended thinking + prompt caching
     "anthropic-beta":
       "interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
-    // Accept Anthropic streaming format
-    accept: "text/event-stream",
-    // The upstream doesn't use openai-intent for the messages path
-    // but leaving it does no harm; keep for header consistency
+    // Only request SSE streaming format when the caller is streaming;
+    // non-streaming calls should use the default application/json accept
+    ...(stream ? { accept: "text/event-stream" } : {}),
   }
 }
 
@@ -101,13 +103,13 @@ function buildNativeHeaders(vision: boolean): Record<string, string> {
  * the correct format we leave it alone; if they sent the old format and the
  * model requires adaptive, we upgrade automatically.
  */
-function buildUpstreamPayload(
+export function buildUpstreamPayload(
   payload: AnthropicMessagesPayload,
 ): AnthropicMessagesPayload {
   const { thinking, output_config, ...rest } = payload
 
   if (!thinking) {
-    return payload
+    return rest // safe: output_config only valid alongside thinking
   }
 
   if (isAdaptiveThinkingModel(payload.model)) {
@@ -140,6 +142,7 @@ function isAdaptiveThinkingModel(model: string): boolean {
   const match = model.match(/^claude-opus-4[.-](\d+)/)
   if (match) {
     const minor = Number.parseInt(match[1], 10)
+    // claude-opus-4.7 and later use the new adaptive thinking API (not legacy budget_tokens)
     return minor >= 7
   }
   return false
