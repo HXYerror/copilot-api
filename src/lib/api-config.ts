@@ -7,8 +7,6 @@ export const standardHeaders = () => ({
   accept: "application/json",
 })
 
-const COPILOT_VERSION_FALLBACK = "0.26.7"
-
 const API_VERSION = "2025-04-01"
 
 export const copilotBaseUrl = (state: State) =>
@@ -32,7 +30,7 @@ export const copilotBaseUrl = (state: State) =>
  *  - copilot-vision-request — Added when request includes image content
  */
 export const copilotHeaders = (state: State, vision: boolean = false) => {
-  const copilotVersion = state.copilotChatVersion ?? COPILOT_VERSION_FALLBACK
+  const copilotVersion = state.copilotChatVersion ?? "0.26.7"
   const headers: Record<string, string> = {
     Authorization: `Bearer ${state.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
@@ -53,7 +51,7 @@ export const copilotHeaders = (state: State, vision: boolean = false) => {
 
 export const GITHUB_API_BASE_URL = "https://api.github.com"
 export const githubHeaders = (state: State) => {
-  const copilotVersion = state.copilotChatVersion ?? COPILOT_VERSION_FALLBACK
+  const copilotVersion = state.copilotChatVersion ?? "0.26.7"
   return {
     ...standardHeaders(),
     authorization: `token ${state.githubToken}`,

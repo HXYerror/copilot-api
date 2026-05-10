@@ -1,3 +1,5 @@
+import consola from "consola"
+
 const FALLBACK = "0.26.7"
 const CACHE_TTL = 24 * 60 * 60 * 1000
 
@@ -8,26 +10,9 @@ interface Cache {
 
 let cache: Cache | undefined
 
-interface MarketplaceVersion {
-  version: string
-}
-
-interface MarketplaceExtension {
-  versions: Array<MarketplaceVersion>
-}
-
-interface MarketplaceResult {
-  extensions: Array<MarketplaceExtension>
-}
-
-interface MarketplaceResponse {
-  results: Array<MarketplaceResult>
-}
-
 export async function getCopilotChatVersion(): Promise<string> {
-  const cached = cache
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-    return cached.version
+  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+    return cache.version
   }
 
   let version: string
@@ -59,8 +44,11 @@ export async function getCopilotChatVersion(): Promise<string> {
         },
       )
 
-      const data = (await response.json()) as MarketplaceResponse
-      const parsed = data.results[0]?.extensions[0]?.versions[0]?.version
+      /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+      const data = (await response.json()) as any
+      const parsed: unknown =
+        data?.results?.[0]?.extensions?.[0]?.versions?.[0]?.version
+      /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 
       if (typeof parsed !== "string" || !parsed) {
         throw new Error("Unexpected response shape")
@@ -71,10 +59,22 @@ export async function getCopilotChatVersion(): Promise<string> {
       clearTimeout(timeout)
     }
   } catch {
+    consola.warn(
+      "Failed to fetch Copilot Chat version from Marketplace, using fallback",
+    )
     version = FALLBACK
   }
 
-  // eslint-disable-next-line require-atomic-updates
-  cache = { version, fetchedAt: Date.now() }
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    consola.warn(`Invalid version format received: ${version}, using fallback`)
+    version = FALLBACK
+  }
+
+  if (version !== FALLBACK) {
+    // eslint-disable-next-line require-atomic-updates
+    cache = { version, fetchedAt: Date.now() }
+  }
+  // If version === FALLBACK, don't write cache — allow retry next call
+
   return version
 }

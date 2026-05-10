@@ -1,84 +1,45 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test"
 
+import type { ModelsResponse } from "../src/services/copilot/get-models"
+
 // ---------------------------------------------------------------------------
-// cacheCopilotChatVersion & cacheVSCodeVersion — integration tests against
-// the real state singleton, with service functions mocked.
+// cacheModels — integration test against the real state singleton,
+// with the service function mocked.
 // ---------------------------------------------------------------------------
 
-// Mock the service modules before importing utils so bun's module registry
-// picks up the mocks when utils.ts resolves its imports.
-const mockGetCopilotChatVersion = mock(() => Promise.resolve("0.30.1"))
-const mockGetVSCodeVersion = mock(() => Promise.resolve("1.99.0"))
+const fakeModels: ModelsResponse = {
+  object: "list",
+  data: [],
+}
 
-void mock.module("../src/services/get-copilot-chat-version", () => ({
-  getCopilotChatVersion: mockGetCopilotChatVersion,
-}))
+const mockGetModels = mock(() => Promise.resolve(fakeModels))
 
-void mock.module("../src/services/get-vscode-version", () => ({
-  getVSCodeVersion: mockGetVSCodeVersion,
+void mock.module("../src/services/copilot/get-models", () => ({
+  getModels: mockGetModels,
 }))
 
 // Import after mocking so the mocks are active
 import { state } from "../src/lib/state"
-import { cacheCopilotChatVersion, cacheVSCodeVersion } from "../src/lib/utils"
+import { cacheModels } from "../src/lib/utils"
 
-describe("cacheCopilotChatVersion", () => {
+describe("cacheModels", () => {
   beforeEach(() => {
-    // Reset state between tests
-    state.copilotChatVersion = undefined
-    state.vsCodeVersion = undefined
-    mockGetCopilotChatVersion.mockReset()
-    mockGetVSCodeVersion.mockReset()
+    state.models = undefined
+    mockGetModels.mockReset()
   })
 
-  test("sets state.copilotChatVersion with value from service", async () => {
-    mockGetCopilotChatVersion.mockResolvedValue("0.30.1")
+  test("sets state.models with value from service", async () => {
+    mockGetModels.mockResolvedValue(fakeModels)
 
-    expect(state.copilotChatVersion).toBeUndefined()
-    await cacheCopilotChatVersion()
-    expect(state.copilotChatVersion).toBe("0.30.1")
+    expect(state.models).toBeUndefined()
+    await cacheModels()
+    expect(state.models).toEqual(fakeModels)
   })
 
-  test("sets state.copilotChatVersion to fallback value returned by service", async () => {
-    mockGetCopilotChatVersion.mockResolvedValue("0.26.7")
+  test("calls getModels exactly once", async () => {
+    mockGetModels.mockResolvedValue(fakeModels)
 
-    await cacheCopilotChatVersion()
-    expect(state.copilotChatVersion).toBe("0.26.7")
-  })
-
-  test("calls getCopilotChatVersion exactly once", async () => {
-    mockGetCopilotChatVersion.mockResolvedValue("0.28.0")
-
-    await cacheCopilotChatVersion()
-    expect(mockGetCopilotChatVersion).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe("cacheVSCodeVersion", () => {
-  beforeEach(() => {
-    state.vsCodeVersion = undefined
-    mockGetVSCodeVersion.mockReset()
-  })
-
-  test("sets state.vsCodeVersion with value from service", async () => {
-    mockGetVSCodeVersion.mockResolvedValue("1.99.0")
-
-    expect(state.vsCodeVersion).toBeUndefined()
-    await cacheVSCodeVersion()
-    expect(state.vsCodeVersion).toBe("1.99.0")
-  })
-
-  test("sets state.vsCodeVersion to fallback value returned by service", async () => {
-    mockGetVSCodeVersion.mockResolvedValue("1.104.3")
-
-    await cacheVSCodeVersion()
-    expect(state.vsCodeVersion).toBe("1.104.3")
-  })
-
-  test("calls getVSCodeVersion exactly once", async () => {
-    mockGetVSCodeVersion.mockResolvedValue("1.99.0")
-
-    await cacheVSCodeVersion()
-    expect(mockGetVSCodeVersion).toHaveBeenCalledTimes(1)
+    await cacheModels()
+    expect(mockGetModels).toHaveBeenCalledTimes(1)
   })
 })

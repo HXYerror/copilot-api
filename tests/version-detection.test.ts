@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test"
+import { setSystemTime } from "bun:test"
 
 import type { state as StateType } from "../src/lib/state"
 import type { getCopilotChatVersion as GetCopilotChatVersion } from "../src/services/get-copilot-chat-version"
@@ -112,6 +113,71 @@ describe("getVSCodeVersion", () => {
     // fetch should only have been called once
     expect(fetchCallCount).toBe(1)
   })
+
+  // T1 — VS Code API returns malformed JSON (non-array body {}): falls back to AUR
+  test("T1: falls back to AUR when official API returns non-array body", async () => {
+    let requestIndex = 0
+    globalThis.fetch = makeFetchMock((_url) => {
+      const i = requestIndex++
+      if (i === 0) return jsonResponse({}) // non-array — triggers "Unexpected response shape"
+      // AUR PKGBUILD response
+      return textResponse("pkgver=1.90.0\narch=(x86_64)")
+    })
+
+    const mod = (await import(
+      `../src/services/get-vscode-version.ts?t=${Date.now() + 10}`
+    )) as VSCodeVersionModule
+    const version = await mod.getVSCodeVersion()
+    expect(version).toBe("1.90.0")
+    expect(requestIndex).toBe(2)
+  })
+
+  // T2 — AUR PKGBUILD missing pkgver= line: returns hardcoded fallback
+  test("T2: returns hardcoded fallback when AUR PKGBUILD has no pkgver line", async () => {
+    let requestIndex = 0
+    globalThis.fetch = makeFetchMock((_url) => {
+      const i = requestIndex++
+      if (i === 0) throw new Error("network error")
+      // AUR response missing pkgver=
+      return textResponse("pkgdesc='VSCode'\npkgrel=1\n")
+    })
+
+    const mod = (await import(
+      `../src/services/get-vscode-version.ts?t=${Date.now() + 11}`
+    )) as VSCodeVersionModule
+    const version = await mod.getVSCodeVersion()
+    expect(version).toBe("1.104.3")
+  })
+
+  // T5 — TTL expiry triggers refetch
+  test("T5: TTL expiry triggers a new fetch", async () => {
+    const CACHE_TTL = 24 * 60 * 60 * 1000
+    let fetchCount = 0
+    globalThis.fetch = makeFetchMock((_url) => {
+      fetchCount++
+      return jsonResponse(["1.99.0"])
+    })
+
+    const mod = (await import(
+      `../src/services/get-vscode-version.ts?t=${Date.now() + 12}`
+    )) as VSCodeVersionModule
+
+    // First call — populates cache
+    await mod.getVSCodeVersion()
+    expect(fetchCount).toBe(1)
+
+    // Advance clock past TTL
+    setSystemTime(new Date(Date.now() + CACHE_TTL + 1))
+
+    try {
+      // Second call — cache expired, should fetch again
+      await mod.getVSCodeVersion()
+      expect(fetchCount).toBe(2)
+    } finally {
+      // Always reset system time
+      setSystemTime()
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -189,6 +255,53 @@ describe("getCopilotChatVersion", () => {
     expect(v2).toBe("0.30.1")
     expect(fetchCallCount).toBe(1)
   })
+
+  // T3 — Marketplace returns HTTP 503
+  test("T3: returns fallback when Marketplace returns HTTP 503", async () => {
+    globalThis.fetch = makeFetchMock((_url) => {
+      return new Response("Service Unavailable", { status: 503 })
+    })
+
+    const mod = (await import(
+      `../src/services/get-copilot-chat-version.ts?t=${Date.now() + 10}`
+    )) as CopilotChatVersionModule
+    const version = await mod.getCopilotChatVersion()
+    expect(version).toBe("0.26.7")
+  })
+
+  // T4 — Marketplace returns version: "" (empty string)
+  test("T4: returns fallback when Marketplace version is empty string", async () => {
+    globalThis.fetch = makeFetchMock((_url) => {
+      return jsonResponse({
+        results: [{ extensions: [{ versions: [{ version: "" }] }] }],
+      })
+    })
+
+    const mod = (await import(
+      `../src/services/get-copilot-chat-version.ts?t=${Date.now() + 11}`
+    )) as CopilotChatVersionModule
+    const version = await mod.getCopilotChatVersion()
+    expect(version).toBe("0.26.7")
+  })
+
+  // T7 — Format validation rejects CRLF-injected version
+  test("T7: rejects version with CRLF injection and returns fallback", async () => {
+    globalThis.fetch = makeFetchMock((_url) => {
+      return jsonResponse({
+        results: [
+          {
+            extensions: [{ versions: [{ version: "1.0.0\r\nEvil: header" }] }],
+          },
+        ],
+      })
+    })
+
+    const mod = (await import(
+      `../src/services/get-copilot-chat-version.ts?t=${Date.now() + 12}`
+    )) as CopilotChatVersionModule
+    const version = await mod.getCopilotChatVersion()
+    expect(version).toBe("0.26.7")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -206,5 +319,31 @@ describe("State type includes copilotChatVersion", () => {
     // Should be assignable without TS errors (runtime check)
     state.copilotChatVersion = "0.26.7"
     expect(state.copilotChatVersion).toBe("0.26.7")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T6 — api-config header uses fallback when copilotChatVersion is undefined
+// ---------------------------------------------------------------------------
+
+describe("copilotHeaders fallback", () => {
+  test("T6: editor-plugin-version uses fallback string when state.copilotChatVersion is undefined", async () => {
+    const { copilotHeaders } = await import("../src/lib/api-config")
+    const minimalState = {
+      accountType: "individual",
+      manualApprove: false,
+      rateLimitWait: false,
+      showToken: false,
+      copilotToken: "tok",
+      vsCodeVersion: "1.99.0",
+      copilotChatVersion: undefined,
+    }
+
+    const headers = copilotHeaders(
+      minimalState as Parameters<typeof copilotHeaders>[0],
+      false,
+    )
+    expect(headers["editor-plugin-version"]).not.toBe("copilot-chat/undefined")
+    expect(headers["editor-plugin-version"]).toBe("copilot-chat/0.26.7")
   })
 })
