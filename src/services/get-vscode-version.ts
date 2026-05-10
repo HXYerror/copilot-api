@@ -1,14 +1,10 @@
 import consola from "consola"
 
+import { VERSION_CACHE_TTL_MS, type VersionCache } from "./version-cache"
+
 const FALLBACK = "1.104.3"
-const CACHE_TTL = 24 * 60 * 60 * 1000
 
-interface Cache {
-  version: string
-  fetchedAt: number
-}
-
-let cache: Cache | undefined
+let cache: VersionCache | undefined
 
 async function fetchFromOfficialApi(): Promise<string> {
   const controller = new AbortController()
@@ -60,35 +56,37 @@ async function fetchFromAur(): Promise<string> {
 }
 
 export async function getVSCodeVersion(): Promise<string> {
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+  if (cache && Date.now() - cache.fetchedAt < VERSION_CACHE_TTL_MS) {
     return cache.version
   }
 
-  let version: string
+  let fetched: string | null = null
 
   try {
-    version = await fetchFromOfficialApi()
+    fetched = await fetchFromOfficialApi()
   } catch {
     try {
-      version = await fetchFromAur()
+      fetched = await fetchFromAur()
     } catch {
       consola.warn(
         "Failed to fetch VS Code version from all sources, using fallback",
       )
-      version = FALLBACK
     }
   }
 
-  if (!/^\d+\.\d+\.\d+$/.test(version)) {
-    consola.warn(`Invalid version format received: ${version}, using fallback`)
-    version = FALLBACK
-  }
+  const version =
+    fetched !== null && /^\d+\.\d+\.\d+$/.test(fetched) ? fetched : FALLBACK
 
-  if (version !== FALLBACK) {
+  if (fetched !== null && version !== FALLBACK) {
     // eslint-disable-next-line require-atomic-updates
     cache = { version, fetchedAt: Date.now() }
+  } else if (fetched !== null) {
+    // Format validation rejected the fetched value
+    const safeVersion = fetched.slice(0, 40).replaceAll(/[^\x20-\x7E]/g, "?")
+    consola.warn(
+      `Invalid version format received: ${safeVersion}, using fallback`,
+    )
   }
-  // If version === FALLBACK, don't write cache — allow retry next call
 
   return version
 }
