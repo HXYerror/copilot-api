@@ -32,24 +32,5 @@ export function isNativeAnthropicModel(modelId: string): boolean {
     // Model not found in list — fall through to prefix heuristic
   }
 
-  return matchesAnthropicPrefix(modelId)
-}
-
-/**
- * Static prefix heuristic used before `state.models` is populated.
- * Covers all current Claude variants served by Copilot.
- */
-function matchesAnthropicPrefix(modelId: string): boolean {
   return modelId.startsWith("claude-")
-}
-
-/**
- * Returns all model IDs that support native Anthropic pass-through.
- * Used for diagnostics and startup logging.
- */
-export function nativeAnthropicModelIds(): ReadonlyArray<string> {
-  if (!state.models?.data) return []
-  return state.models.data
-    .filter((m) => m.vendor === "Anthropic")
-    .map((m) => m.id)
 }

@@ -80,15 +80,16 @@ function buildNativeHeaders(
 ): Record<string, string> {
   const base = copilotHeaders(state, vision)
 
-  // The native /v1/messages endpoint expects these Anthropic headers
+  // Remove headers that are OpenAI-specific and not expected by Anthropic endpoint
+  const { "openai-intent": _dropped, ...anthropicBase } = base
+
   return {
-    ...base,
+    ...anthropicBase,
     "anthropic-version": "2023-06-01",
     // Enable beta features: extended thinking + prompt caching
     "anthropic-beta":
       "interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
-    // Only request SSE streaming format when the caller is streaming;
-    // non-streaming calls should use the default application/json accept
+    // Only request SSE streaming format when the caller is streaming
     ...(stream ? { accept: "text/event-stream" } : {}),
   }
 }
@@ -121,7 +122,8 @@ export function buildUpstreamPayload(
       return {
         ...rest,
         thinking: { type: "adaptive" },
-        output_config: output_config ?? { effort: "medium" },
+        output_config:
+          output_config?.effort ? output_config : { effort: "medium" },
       }
     }
     // Already adaptive — forward as-is
@@ -133,9 +135,10 @@ export function buildUpstreamPayload(
 }
 
 /**
- * Models that require the new adaptive thinking API.
- * Populated dynamically at dispatch time via `isNativeAnthropicModel()`.
- * This hard-coded check is the fallback.
+ * Returns true for models that require the adaptive thinking API
+ * (`{ type: "adaptive" }` + `output_config.effort`) rather than the
+ * legacy `{ type: "enabled", budget_tokens: N }`.
+ * Currently: claude-opus-4.7 and later.
  */
 function isAdaptiveThinkingModel(model: string): boolean {
   // claude-opus-4.7 and above use adaptive thinking

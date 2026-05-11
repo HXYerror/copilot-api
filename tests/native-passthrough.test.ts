@@ -1,4 +1,4 @@
-import { describe, test, expect, afterEach } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
@@ -72,17 +72,45 @@ describe("buildUpstreamPayload", () => {
     expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 1024 })
     expect(result).not.toHaveProperty("output_config")
   })
+
+  // T5 — adaptive upgrade with no output_config → defaults to effort:medium
+  test("T5: adaptive upgrade with no output_config defaults to effort:medium", () => {
+    const payload = basePayload({
+      model: "claude-opus-4.7",
+      thinking: { type: "enabled", budget_tokens: 1024 },
+      // output_config intentionally absent
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "adaptive" })
+    expect(result.output_config).toEqual({ effort: "medium" })
+  })
+
+  // T6 — output_config: {} also triggers default (not bypassed)
+  test("T6: empty output_config triggers medium effort default", () => {
+    const payload = basePayload({
+      model: "claude-opus-4.7",
+      thinking: { type: "enabled" },
+      output_config: {},
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "adaptive" })
+    expect(result.output_config).toEqual({ effort: "medium" })
+  })
 })
 
 // ---------------------------------------------------------------------------
 // isNativeAnthropicModel tests
 // ---------------------------------------------------------------------------
 
-// Save original models state and restore after each test
-const originalModels = state.models
+// Per-test state isolation
+let savedModels: typeof state.models
+
+beforeEach(() => {
+  savedModels = state.models
+})
 
 afterEach(() => {
-  state.models = originalModels
+  state.models = savedModels
 })
 
 describe("isNativeAnthropicModel", () => {
@@ -156,5 +184,74 @@ describe("isNativeAnthropicModel", () => {
   test("T9: state.models undefined → heuristic (claude- prefix → true)", () => {
     state.models = undefined
     expect(isNativeAnthropicModel("claude-something")).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isAdaptiveThinkingModel boundary tests (via buildUpstreamPayload)
+// ---------------------------------------------------------------------------
+
+describe("isAdaptiveThinkingModel boundaries (via buildUpstreamPayload)", () => {
+  // B1 — claude-opus-4.6 is NOT upgraded (one below threshold)
+  test("B1: claude-opus-4.6 does NOT get adaptive upgrade", () => {
+    const payload = basePayload({
+      model: "claude-opus-4.6",
+      thinking: { type: "enabled", budget_tokens: 2048 },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 2048 })
+    expect(result).not.toHaveProperty("output_config")
+  })
+
+  // B2 — claude-opus-4.7 IS upgraded (exact threshold)
+  test("B2: claude-opus-4.7 (dot separator) IS upgraded to adaptive", () => {
+    const payload = basePayload({
+      model: "claude-opus-4.7",
+      thinking: { type: "enabled" },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "adaptive" })
+  })
+
+  // B3 — claude-opus-4-7 (dash separator) IS upgraded
+  test("B3: claude-opus-4-7 (dash separator) IS upgraded to adaptive", () => {
+    const payload = basePayload({
+      model: "claude-opus-4-7",
+      thinking: { type: "enabled" },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "adaptive" })
+  })
+
+  // B4 — claude-opus-4-6 (dash separator) is NOT upgraded
+  test("B4: claude-opus-4-6 (dash separator) NOT upgraded", () => {
+    const payload = basePayload({
+      model: "claude-opus-4-6",
+      thinking: { type: "enabled", budget_tokens: 512 },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 512 })
+    expect(result).not.toHaveProperty("output_config")
+  })
+
+  // B5 — claude-opus-4.8 (one above threshold) IS upgraded
+  test("B5: claude-opus-4.8 (one above threshold) IS upgraded", () => {
+    const payload = basePayload({
+      model: "claude-opus-4.8",
+      thinking: { type: "enabled" },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "adaptive" })
+  })
+
+  // B6 — claude-sonnet-4.7 (non-opus) is NOT upgraded
+  test("B6: claude-sonnet-4.7 (non-opus) NOT upgraded to adaptive", () => {
+    const payload = basePayload({
+      model: "claude-sonnet-4.7",
+      thinking: { type: "enabled", budget_tokens: 1024 },
+    } as Partial<AnthropicMessagesPayload>)
+    const result = buildUpstreamPayload(payload)
+    expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 1024 })
+    expect(result).not.toHaveProperty("output_config")
   })
 })

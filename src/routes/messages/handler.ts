@@ -74,18 +74,19 @@ async function handleNative(
     }>) {
       if (!rawEvent.data) continue
 
-      // Parse to log but forward the original JSON verbatim
+      // Forward verbatim — never block on parse failure
+      await stream.writeSSE({
+        event: rawEvent.event,
+        data: rawEvent.data,
+      })
+
+      // Parse only for debug logging
       try {
         const parsed = JSON.parse(rawEvent.data) as AnthropicStreamEventData
         consola.debug("Native SSE event:", parsed.type)
-        await stream.writeSSE({
-          event: parsed.type,
-          data: rawEvent.data,
-        })
       } catch {
-        // Malformed chunk — skip
         consola.warn(
-          "Could not parse native SSE chunk:",
+          "Could not parse native SSE chunk for logging:",
           rawEvent.data.slice(0, 200),
         )
       }
