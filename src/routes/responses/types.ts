@@ -13,7 +13,7 @@ export interface ResponsesPayload {
   top_p?: number | null
   max_output_tokens?: number | null
   reasoning?: {
-    effort?: "minimal" | "low" | "medium" | "high"
+    effort?: "low" | "medium" | "high"
     summary?: "auto" | "concise" | "detailed"
   } | null
   previous_response_id?: string | null
@@ -30,6 +30,7 @@ export interface ResponsesPayload {
 // Input item types (union)
 export type ResponsesInputItem =
   | ResponsesInputMessage
+  | ResponsesInputFunctionCall
   | ResponsesFunctionCallOutput
   | ResponsesReasoningItem
 
@@ -39,6 +40,15 @@ export interface ResponsesInputMessage {
   content: string | Array<ResponsesContentPart>
   id?: string
   status?: "completed" | "incomplete" | null
+}
+
+export interface ResponsesInputFunctionCall {
+  type: "function_call"
+  id?: string
+  call_id: string
+  name: string
+  arguments: string
+  status?: "completed" | "in_progress" | "incomplete" | null
 }
 
 export interface ResponsesFunctionCallOutput {
@@ -57,7 +67,12 @@ export interface ResponsesReasoningItem {
 
 export type ResponsesContentPart =
   | { type: "input_text"; text: string }
-  | { type: "input_image"; image_url: string; detail?: "low" | "high" | "auto" }
+  | {
+      type: "input_image"
+      image_url?: string | null
+      file_id?: string | null
+      detail?: "low" | "high" | "auto"
+    }
 
 // Tool types
 export interface ResponsesTool {

@@ -5,11 +5,14 @@ import consola from "consola"
 import type { ResponsesPayload } from "./types"
 
 export async function handleResponses(c: Context): Promise<Response> {
-  const payload = await c.req.json<ResponsesPayload>()
-  consola.debug("Responses API request payload:", JSON.stringify(payload))
+  try {
+    const payload = await c.req.json<ResponsesPayload>()
+    consola.debug("Responses API request payload:", JSON.stringify(payload))
+  } catch {
+    consola.debug("Responses API request received (could not parse body)")
+  }
 
   // TODO(#4): wire up createResponses() service client
-  // For now return a structured 501 so the route is exercisable
   consola.warn(
     "POST /v1/responses is not yet implemented — service client pending (#4)",
   )
