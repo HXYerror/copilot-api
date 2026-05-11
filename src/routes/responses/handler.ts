@@ -1,30 +1,72 @@
 import type { Context } from "hono"
 
 import consola from "consola"
+import { streamSSE } from "hono/streaming"
+
+import { awaitApproval } from "~/lib/approval"
+import { state } from "~/lib/state"
+import { createResponses } from "~/services/copilot/create-responses"
 
 import type { ResponsesPayload } from "./types"
 
 export async function handleResponses(c: Context): Promise<Response> {
+  let payload: ResponsesPayload
   try {
-    const payload = await c.req.json<ResponsesPayload>()
-    consola.debug("Responses API request payload:", JSON.stringify(payload))
+    payload = await c.req.json<ResponsesPayload>()
   } catch {
-    consola.debug("Responses API request received (could not parse body)")
+    return c.json(
+      {
+        error: {
+          message: "Invalid JSON body",
+          type: "invalid_request_error",
+          code: "invalid_json",
+        },
+      },
+      400,
+    )
   }
 
-  // TODO(#4): wire up createResponses() service client
-  consola.info(
-    "POST /v1/responses is not yet implemented — service client pending (#4)",
-  )
-  return c.json(
-    {
-      error: {
-        message:
-          "Responses API service client not yet implemented. See issue #4.",
-        type: "not_implemented",
-        code: "responses_not_implemented",
-      },
-    },
-    501,
-  )
+  consola.debug("Responses API request payload:", JSON.stringify(payload))
+
+  if (state.manualApprove) {
+    await awaitApproval()
+  }
+
+  const response = await createResponses(payload)
+
+  if (!payload.stream) {
+    consola.debug(
+      "Responses non-streaming response:",
+      JSON.stringify(response).slice(0, 400),
+    )
+    return c.json(response)
+  }
+
+  // Streaming: proxy SSE events verbatim (same pattern as native Anthropic pass-through)
+  consola.debug("Responses streaming response — proxying SSE events")
+  return streamSSE(c, async (stream) => {
+    for await (const rawEvent of response as AsyncIterable<{
+      data?: string
+      event?: string
+    }>) {
+      if (!rawEvent.data) continue
+
+      // Forward verbatim first
+      await stream.writeSSE({
+        event: rawEvent.event,
+        data: rawEvent.data,
+      })
+
+      // Parse only for debug logging
+      try {
+        const parsed = JSON.parse(rawEvent.data) as { type: string }
+        consola.debug("Responses SSE event:", parsed.type)
+      } catch {
+        consola.warn(
+          "Could not parse Responses SSE chunk for logging:",
+          rawEvent.data.slice(0, 200),
+        )
+      }
+    }
+  })
 }
