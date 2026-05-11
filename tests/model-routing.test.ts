@@ -1,4 +1,11 @@
-import { describe, test, expect, afterEach, beforeAll } from "bun:test"
+import {
+  describe,
+  test,
+  expect,
+  afterEach,
+  beforeEach,
+  beforeAll,
+} from "bun:test"
 
 import { getModelMode, isResponsesOnlyModel } from "../src/lib/model-routing"
 import { state } from "../src/lib/state"
@@ -30,6 +37,12 @@ describe("isResponsesOnlyModel", () => {
     expect(isResponsesOnlyModel("claude-sonnet-4-5")).toBe(false))
   test("o4-mini → chat", () =>
     expect(isResponsesOnlyModel("o4-mini")).toBe(false))
+  test("o4-pro → responses-only", () =>
+    expect(isResponsesOnlyModel("o4-pro")).toBe(true))
+  test("o1-pro-2025-04-09 (dated alias) → responses-only", () =>
+    expect(isResponsesOnlyModel("o1-pro-2025-04-09")).toBe(true))
+  test("o3-pro-mini → NOT responses-only (not a pro variant)", () =>
+    expect(isResponsesOnlyModel("o3-pro-mini")).toBe(false))
 })
 
 // ---------------------------------------------------------------------------
@@ -37,7 +50,11 @@ describe("isResponsesOnlyModel", () => {
 // ---------------------------------------------------------------------------
 
 describe("getModelMode — with loaded models list", () => {
-  const savedModels = state.models
+  let savedModels: typeof state.models
+
+  beforeEach(() => {
+    savedModels = state.models
+  })
 
   afterEach(() => {
     state.models = savedModels
@@ -69,7 +86,7 @@ describe("getModelMode — with loaded models list", () => {
     expect(getModelMode("future-responses-model")).toBe("responses")
   })
 
-  test("model with capabilities.type=chat in list → falls through to heuristic", () => {
+  test("model with explicit capabilities.type=chat in list → chat (upstream authoritative)", () => {
     state.models = {
       object: "list",
       data: [
@@ -92,9 +109,8 @@ describe("getModelMode — with loaded models list", () => {
         },
       ],
     }
-    // capabilities.type is "chat" so list check doesn't return "responses",
-    // falls through to static heuristic which sees "codex" → responses
-    expect(getModelMode("gpt-5-codex")).toBe("responses")
+    // capabilities.type = "chat" is authoritative → returns "chat" even though name contains "codex"
+    expect(getModelMode("gpt-5-codex")).toBe("chat")
   })
 
   test("regular chat model → chat", () => {
@@ -139,11 +155,21 @@ describe("getModelMode — with loaded models list", () => {
 // ---------------------------------------------------------------------------
 
 describe("chat-completions route blocks responses-only models", () => {
+  let savedModels: typeof state.models
+
   beforeAll(() => {
     state.copilotToken = "test-token"
     state.vsCodeVersion = "1.99.0"
     state.accountType = "individual"
     state.manualApprove = false
+  })
+
+  beforeEach(() => {
+    savedModels = state.models
+  })
+
+  afterEach(() => {
+    state.models = savedModels
   })
 
   test("gpt-5-codex → 400 with responses_only_model code", async () => {
@@ -195,5 +221,62 @@ describe("chat-completions route blocks responses-only models", () => {
       error: { code: string }
     }
     expect(body.error.code).toBe("responses_only_model")
+  })
+
+  test("model with capabilities.type=responses in state is blocked at /v1/chat/completions", async () => {
+    // Set up a model that only the capabilities path would catch (not the heuristic)
+    state.models = {
+      object: "list",
+      data: [
+        {
+          id: "o5-turbo", // no "codex", not "o\d+-pro"
+          vendor: "OpenAI",
+          name: "O5 Turbo",
+          object: "model",
+          version: "1",
+          preview: false,
+          model_picker_enabled: true,
+          capabilities: {
+            family: "gpt",
+            limits: {},
+            object: "model_capabilities",
+            supports: {},
+            tokenizer: "cl100k_base",
+            type: "responses",
+          },
+        },
+      ],
+    }
+
+    const res = await server.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "o5-turbo",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe("responses_only_model")
+  })
+
+  test("gpt-4o is NOT blocked at /v1/chat/completions (chat model)", async () => {
+    // gpt-4o is a chat model — should pass the guard (will fail at upstream but not with 400)
+    // We just need status !== 400 with code responses_only_model
+    const res = await server.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    })
+    // Should NOT return the routing 400
+    if (res.status === 400) {
+      const body = (await res.json()) as { error?: { code?: string } }
+      expect(body.error?.code).not.toBe("responses_only_model")
+    }
+    // Any other status is fine (500 from missing upstream, etc.)
   })
 })

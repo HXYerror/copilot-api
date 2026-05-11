@@ -30,6 +30,7 @@ export function getModelMode(modelId: string): ModelMode {
   if (state.models?.data) {
     const entry = state.models.data.find((m) => m.id === modelId)
     if (entry?.capabilities.type === "responses") return "responses"
+    if (entry?.capabilities.type === "chat") return "chat" // trust upstream when explicit
   }
 
   // 2. Static heuristic: Responses-only models have "codex" in the name
@@ -43,7 +44,8 @@ export function getModelMode(modelId: string): ModelMode {
 export function isResponsesOnlyModel(modelId: string): boolean {
   // codex family: gpt-5-codex, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.3-codex, etc.
   if (modelId.includes("codex")) return true
-  // o-pro family: o1-pro, o3-pro
-  if (/^o\d+-pro$/.test(modelId)) return true
+  // o-pro family: o1-pro, o3-pro, o1-pro-2025-04-09, o3-pro-2025-01-10, etc.
+  // Covers: o\d+-pro(?:-\d{4}-\d{2}-\d{2})? — requires string to end after "pro" or date
+  if (/^o\d+-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(modelId)) return true
   return false
 }

@@ -4,7 +4,7 @@ import consola from "consola"
 import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
-import { isResponsesOnlyModel } from "~/lib/model-routing"
+import { getModelMode } from "~/lib/model-routing"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
@@ -16,12 +16,10 @@ import {
 } from "~/services/copilot/create-chat-completions"
 
 export async function handleCompletion(c: Context) {
-  await checkRateLimit(state)
-
   let payload = await c.req.json<ChatCompletionsPayload>()
   consola.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
-  if (isResponsesOnlyModel(payload.model)) {
+  if (getModelMode(payload.model) === "responses") {
     return c.json(
       {
         error: {
@@ -33,6 +31,8 @@ export async function handleCompletion(c: Context) {
       400,
     )
   }
+
+  await checkRateLimit(state)
 
   // Find the selected model
   const selectedModel = state.models?.data.find(
