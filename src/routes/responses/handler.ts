@@ -13,7 +13,7 @@ export async function handleResponses(c: Context): Promise<Response> {
   }
 
   // TODO(#4): wire up createResponses() service client
-  consola.warn(
+  consola.info(
     "POST /v1/responses is not yet implemented — service client pending (#4)",
   )
   return c.json(

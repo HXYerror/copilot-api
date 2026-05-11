@@ -1,7 +1,7 @@
 // Request types
 export interface ResponsesPayload {
   model: string
-  input: Array<ResponsesInputItem>
+  input: string | Array<ResponsesInputItem>
   instructions?: string
   tools?: Array<ResponsesTool>
   tool_choice?:
@@ -53,6 +53,7 @@ export interface ResponsesInputFunctionCall {
 
 export interface ResponsesFunctionCallOutput {
   type: "function_call_output"
+  id?: string
   call_id: string
   output: string
 }
@@ -72,6 +73,14 @@ export type ResponsesContentPart =
       image_url?: string | null
       file_id?: string | null
       detail?: "low" | "high" | "auto"
+    }
+  | {
+      type: "input_file"
+      /** Pre-uploaded file via Files API */
+      file_id?: string
+      /** Base64-encoded inline file content */
+      file_data?: string
+      filename?: string
     }
 
 // Tool types
@@ -124,7 +133,7 @@ export interface ResponsesResponse {
   object: "response"
   created_at: number
   model: string
-  status: "completed" | "incomplete" | "in_progress" | "failed"
+  status: "completed" | "incomplete" | "in_progress" | "failed" | "cancelled"
   output: Array<ResponsesOutputItem>
   usage?: {
     input_tokens: number
@@ -136,5 +145,5 @@ export interface ResponsesResponse {
   error?: { code: string; message: string } | null
   incomplete_details?: { reason: string } | null
   metadata?: Record<string, string> | null
-  service_tier?: string
+  service_tier?: "default" | "flex" | (string & {})
 }
