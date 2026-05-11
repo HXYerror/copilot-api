@@ -75,17 +75,17 @@ describe("POST /v1/responses — wired handler", () => {
   })
 
   test("missing copilot token returns 500", async () => {
-    // Temporarily clear the token — write is synchronous, no await in between.
     state.copilotToken = undefined
-
-    const res = await server.request("/v1/responses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-4o", input: [] }),
-    })
-    expect(res.status).toBe(500)
-
-    state.copilotToken = "test-token"
+    try {
+      const res = await server.request("/v1/responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", input: [] }),
+      })
+      expect(res.status).toBe(500)
+    } finally {
+      state.copilotToken = "test-token"
+    }
   })
 })
 
@@ -190,6 +190,45 @@ describe("createResponses behavior", () => {
         stream: false,
         input: [
           { type: "function_call_output", call_id: "call_1", output: "{}" },
+        ],
+      }),
+    })
+
+    expect(captureMock).toHaveBeenCalled()
+    const sentHeaders = (
+      captureMock.mock.calls[0][1] as { headers: Record<string, string> }
+    ).headers
+    expect(sentHeaders["X-Initiator"]).toBe("agent")
+
+    // @ts-expect-error – mock doesn't implement full fetch signature
+    globalThis.fetch = fetchMock
+  })
+
+  test("X-Initiator = agent for reasoning item (multi-turn context echo)", async () => {
+    const captureMock = mock(
+      (_url: string, opts: { headers: Record<string, string> }) =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockResponseBody),
+          headers: opts.headers,
+        }),
+    )
+    // @ts-expect-error – mock doesn't implement full fetch signature
+    globalThis.fetch = captureMock
+
+    await server.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        stream: false,
+        input: [
+          {
+            type: "reasoning",
+            id: "rs_abc",
+            encrypted_content: "opaque-blob",
+            status: "completed",
+          },
         ],
       }),
     })

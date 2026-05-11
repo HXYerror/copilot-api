@@ -37,7 +37,8 @@ export function inputHasImages(payload: ResponsesPayload): boolean {
 /**
  * Returns true if this looks like an agent/multi-turn call:
  * - any input item has role "assistant", OR
- * - any item has type "function_call_output" or "function_call"
+ * - any item has type "function_call_output", "function_call", or "reasoning"
+ *   (reasoning items only appear when echoing back prior agentic turn context)
  */
 export function isAgentCall(payload: ResponsesPayload): boolean {
   if (typeof payload.input === "string") return false
@@ -46,7 +47,8 @@ export function isAgentCall(payload: ResponsesPayload): boolean {
     (item: ResponsesInputItem) =>
       ("role" in item && item.role === "assistant")
       || item.type === "function_call_output"
-      || item.type === "function_call",
+      || item.type === "function_call"
+      || item.type === "reasoning",
   )
 }
 

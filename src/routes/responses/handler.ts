@@ -44,29 +44,39 @@ export async function handleResponses(c: Context): Promise<Response> {
 
   // Streaming: proxy SSE events verbatim (same pattern as native Anthropic pass-through)
   consola.debug("Responses streaming response — proxying SSE events")
-  return streamSSE(c, async (stream) => {
-    for await (const rawEvent of response as AsyncIterable<{
-      data?: string
-      event?: string
-    }>) {
-      if (!rawEvent.data) continue
+  return streamSSE(
+    c,
+    async (stream) => {
+      for await (const rawEvent of response as AsyncIterable<{
+        data?: string
+        event?: string
+      }>) {
+        if (!rawEvent.data) continue
 
-      // Forward verbatim first
-      await stream.writeSSE({
-        event: rawEvent.event,
-        data: rawEvent.data,
-      })
+        // Forward verbatim first
+        await stream.writeSSE({
+          event: rawEvent.event,
+          data: rawEvent.data,
+        })
 
-      // Parse only for debug logging
-      try {
-        const parsed = JSON.parse(rawEvent.data) as { type: string }
-        consola.debug("Responses SSE event:", parsed.type)
-      } catch {
-        consola.warn(
-          "Could not parse Responses SSE chunk for logging:",
-          rawEvent.data.slice(0, 200),
-        )
+        // Parse only for debug logging
+        try {
+          const parsed = JSON.parse(rawEvent.data) as { type: string }
+          consola.debug("Responses SSE event:", parsed.type)
+        } catch {
+          consola.warn(
+            "Could not parse Responses SSE chunk for logging:",
+            rawEvent.data.slice(0, 200),
+          )
+        }
       }
-    }
-  })
+    },
+    async (err, stream) => {
+      consola.error("Responses SSE stream error:", err)
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({ message: String(err) }),
+      })
+    },
+  )
 }
