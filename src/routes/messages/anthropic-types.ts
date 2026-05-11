@@ -18,9 +18,16 @@ export interface AnthropicMessagesPayload {
     type: "auto" | "any" | "tool" | "none"
     name?: string
   }
-  thinking?: {
-    type: "enabled"
-    budget_tokens?: number
+  /**
+   * Thinking config.
+   * - Legacy (claude-3.7 / claude-4.5): `{ type: "enabled", budget_tokens: N }`
+   * - New adaptive (claude-opus-4.7+): `{ type: "adaptive" }` paired with
+   *   `output_config.effort` in the request body.
+   */
+  thinking?: { type: "enabled"; budget_tokens?: number } | { type: "adaptive" }
+  /** Used together with `thinking: { type: "adaptive" }` on opus-4.7+. */
+  output_config?: {
+    effort?: "low" | "medium" | "high"
   }
   service_tier?: "auto" | "standard_only"
 }
@@ -32,17 +39,24 @@ export interface AnthropicTextBlock {
 
 export interface AnthropicImageBlock {
   type: "image"
-  source: {
-    type: "base64"
-    media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp"
-    data: string
-  }
+  source:
+    | {
+        type: "base64"
+        media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+        data: string
+      }
+    | {
+        /** URL images are rejected by Copilot upstream — kept for type fidelity only. */
+        type: "url"
+        url: string
+      }
 }
 
 export interface AnthropicToolResultBlock {
   type: "tool_result"
   tool_use_id: string
-  content: string
+  /** May be a plain string or an array of content blocks. */
+  content: string | Array<AnthropicTextBlock | AnthropicImageBlock>
   is_error?: boolean
 }
 
@@ -56,6 +70,12 @@ export interface AnthropicToolUseBlock {
 export interface AnthropicThinkingBlock {
   type: "thinking"
   thinking: string
+  /**
+   * Opaque signature returned by the upstream for extended thinking blocks.
+   * Must be echoed back in subsequent turns to enable multi-turn reasoning.
+   * Present on native pass-through responses; absent on translated responses.
+   */
+  signature?: string
 }
 
 export type AnthropicUserContentBlock =
@@ -106,6 +126,7 @@ export interface AnthropicResponse {
     output_tokens: number
     cache_creation_input_tokens?: number
     cache_read_input_tokens?: number
+    /** Present on native pass-through responses. */
     service_tier?: "standard" | "priority" | "batch"
   }
 }
