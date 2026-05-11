@@ -7,7 +7,9 @@ import { awaitApproval } from "~/lib/approval"
 import { state } from "~/lib/state"
 import { createResponses } from "~/services/copilot/create-responses"
 
-import type { ResponsesPayload } from "./types"
+import type { ResponsesPayload, ResponsesResponse } from "./types"
+
+import { sanitiseResponsesOutput } from "./translation"
 
 export async function handleResponses(c: Context): Promise<Response> {
   let payload: ResponsesPayload
@@ -35,11 +37,12 @@ export async function handleResponses(c: Context): Promise<Response> {
   const response = await createResponses(payload)
 
   if (!payload.stream) {
+    const sanitised = sanitiseResponsesOutput(response as ResponsesResponse)
     consola.debug(
       "Responses non-streaming response:",
-      JSON.stringify(response).slice(0, 400),
+      JSON.stringify(sanitised).slice(0, 400),
     )
-    return c.json(response)
+    return c.json(sanitised)
   }
 
   // Streaming: proxy SSE events verbatim (same pattern as native Anthropic pass-through)
