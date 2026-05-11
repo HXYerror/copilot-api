@@ -2,7 +2,7 @@ import consola from "consola"
 
 import { VERSION_CACHE_TTL_MS, type VersionCache } from "./version-cache"
 
-const FALLBACK = "1.104.3"
+export const FALLBACK = "1.104.3"
 
 let cache: VersionCache | undefined
 

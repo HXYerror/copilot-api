@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 
 import { FALLBACK as COPILOT_CHAT_VERSION_FALLBACK } from "~/services/get-copilot-chat-version"
+import { FALLBACK as VSCODE_VERSION_FALLBACK } from "~/services/get-vscode-version"
 
 import type { State } from "./state"
 
@@ -38,7 +39,7 @@ export const copilotHeaders = (state: State, vision: boolean = false) => {
     Authorization: `Bearer ${state.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
     "copilot-integration-id": "vscode-chat",
-    "editor-version": `vscode/${state.vsCodeVersion}`,
+    "editor-version": `vscode/${state.vsCodeVersion ?? VSCODE_VERSION_FALLBACK}`,
     "editor-plugin-version": `copilot-chat/${copilotVersion}`,
     "user-agent": `GitHubCopilotChat/${copilotVersion}`,
     "openai-intent": "conversation-panel",
@@ -59,7 +60,7 @@ export const githubHeaders = (state: State) => {
   return {
     ...standardHeaders(),
     authorization: `token ${state.githubToken}`,
-    "editor-version": `vscode/${state.vsCodeVersion}`,
+    "editor-version": `vscode/${state.vsCodeVersion ?? VSCODE_VERSION_FALLBACK}`,
     "editor-plugin-version": `copilot-chat/${copilotVersion}`,
     "user-agent": `GitHubCopilotChat/${copilotVersion}`,
     "x-github-api-version": API_VERSION,
