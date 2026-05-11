@@ -64,10 +64,13 @@ export async function handleResponses(c: Context): Promise<Response> {
           const parsed = JSON.parse(rawEvent.data) as { type: string }
           consola.debug("Responses SSE event:", parsed.type)
         } catch {
-          consola.warn(
-            "Could not parse Responses SSE chunk for logging:",
-            rawEvent.data.slice(0, 200),
-          )
+          // [DONE] sentinel is expected at stream end — only warn on unexpected data
+          if (rawEvent.data !== "[DONE]") {
+            consola.warn(
+              "Could not parse Responses SSE chunk for logging:",
+              rawEvent.data.slice(0, 200),
+            )
+          }
         }
       }
     },

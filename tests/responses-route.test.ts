@@ -1,4 +1,12 @@
-import { describe, test, expect, mock, beforeAll, beforeEach } from "bun:test"
+import {
+  describe,
+  test,
+  expect,
+  mock,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from "bun:test"
 
 import { state } from "../src/lib/state"
 import { server } from "../src/server"
@@ -94,12 +102,17 @@ describe("POST /v1/responses — wired handler", () => {
 // ---------------------------------------------------------------------------
 
 describe("createResponses behavior", () => {
-  // Restore state before each test in this block
+  // Restore state and fetch mock before/after each test in this block
   beforeEach(() => {
     state.copilotToken = "test-token"
     state.vsCodeVersion = "1.99.0"
     state.accountType = "individual"
     state.manualApprove = false
+  })
+
+  afterEach(() => {
+    // @ts-expect-error – mock doesn't implement full fetch signature
+    globalThis.fetch = fetchMock
   })
 
   test("X-Initiator = agent when assistant message present", async () => {
@@ -132,10 +145,6 @@ describe("createResponses behavior", () => {
       captureMock.mock.calls[0][1] as { headers: Record<string, string> }
     ).headers
     expect(sentHeaders["X-Initiator"]).toBe("agent")
-
-    // Restore default mock
-    // @ts-expect-error – mock doesn't implement full fetch signature
-    globalThis.fetch = fetchMock
   })
 
   test("X-Initiator = user for pure user messages", async () => {
@@ -165,9 +174,6 @@ describe("createResponses behavior", () => {
       captureMock.mock.calls[0][1] as { headers: Record<string, string> }
     ).headers
     expect(sentHeaders["X-Initiator"]).toBe("user")
-
-    // @ts-expect-error – mock doesn't implement full fetch signature
-    globalThis.fetch = fetchMock
   })
 
   test("X-Initiator = agent for function_call_output item", async () => {
@@ -199,9 +205,6 @@ describe("createResponses behavior", () => {
       captureMock.mock.calls[0][1] as { headers: Record<string, string> }
     ).headers
     expect(sentHeaders["X-Initiator"]).toBe("agent")
-
-    // @ts-expect-error – mock doesn't implement full fetch signature
-    globalThis.fetch = fetchMock
   })
 
   test("X-Initiator = agent for reasoning item (multi-turn context echo)", async () => {
@@ -238,9 +241,6 @@ describe("createResponses behavior", () => {
       captureMock.mock.calls[0][1] as { headers: Record<string, string> }
     ).headers
     expect(sentHeaders["X-Initiator"]).toBe("agent")
-
-    // @ts-expect-error – mock doesn't implement full fetch signature
-    globalThis.fetch = fetchMock
   })
 
   test("upstream 4xx returns error response", async () => {
@@ -261,8 +261,39 @@ describe("createResponses behavior", () => {
     })
 
     expect(res.status).toBe(429)
+  })
 
+  test("streaming request proxies SSE events and returns text/event-stream", async () => {
+    const sseBody =
+      'event: response.created\ndata: {"type":"response.created"}\n\n'
+      + 'event: response.completed\ndata: {"type":"response.completed"}\n\n'
+      + "data: [DONE]\n\n"
+
+    const streamMock = mock(() =>
+      Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(sseBody))
+            controller.close()
+          },
+        }),
+      }),
+    )
     // @ts-expect-error – mock doesn't implement full fetch signature
-    globalThis.fetch = fetchMock
+    globalThis.fetch = streamMock
+
+    const res = await server.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o", input: [], stream: true }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type")).toMatch(/text\/event-stream/)
+    const text = await res.text()
+    expect(text).toContain("response.created")
+    expect(text).toContain("response.completed")
   })
 })

@@ -58,9 +58,7 @@ export function isAgentCall(payload: ResponsesPayload): boolean {
 
 export const createResponses = async (
   payload: ResponsesPayload,
-): Promise<
-  ResponsesResponse | AsyncGenerator<ServerSentEventMessage, void, unknown>
-> => {
+): Promise<ResponsesResponse | AsyncIterable<ServerSentEventMessage>> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
 
   const enableVision = inputHasImages(payload)
