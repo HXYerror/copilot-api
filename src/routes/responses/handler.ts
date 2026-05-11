@@ -9,7 +9,7 @@ import { createResponses } from "~/services/copilot/create-responses"
 
 import type { ResponsesPayload, ResponsesResponse } from "./types"
 
-import { sanitiseResponsesOutput } from "./translation"
+import { sanitiseOutputItem, sanitiseResponsesOutput } from "./translation"
 
 export async function handleResponses(c: Context): Promise<Response> {
   let payload: ResponsesPayload
@@ -56,25 +56,46 @@ export async function handleResponses(c: Context): Promise<Response> {
       }>) {
         if (!rawEvent.data) continue
 
-        // Forward verbatim first
-        await stream.writeSSE({
-          event: rawEvent.event,
-          data: rawEvent.data,
-        })
-
-        // Parse only for debug logging
-        try {
-          const parsed = JSON.parse(rawEvent.data) as { type: string }
-          consola.debug("Responses SSE event:", parsed.type)
-        } catch {
-          // [DONE] sentinel is expected at stream end — only warn on unexpected data
-          if (rawEvent.data !== "[DONE]") {
-            consola.warn(
-              "Could not parse Responses SSE chunk for logging:",
-              rawEvent.data.slice(0, 200),
+        // Sanitise status:null from embedded output items before forwarding.
+        // SSE events like response.output_item.done carry full item snapshots
+        // which can contain null status fields rejected by upstream on re-submission.
+        let forwardData = rawEvent.data
+        if (rawEvent.data !== "[DONE]") {
+          try {
+            const parsed = JSON.parse(rawEvent.data) as Record<string, unknown>
+            consola.debug(
+              "Responses SSE event:",
+              (parsed as { type?: string }).type,
             )
+            // Sanitise embedded item or output array
+            if (parsed["item"]) {
+              parsed["item"] = sanitiseOutputItem(
+                parsed["item"] as Parameters<typeof sanitiseOutputItem>[0],
+              )
+            }
+            if (Array.isArray(parsed["output"])) {
+              parsed["output"] = (
+                parsed["output"] as Array<
+                  Parameters<typeof sanitiseOutputItem>[0]
+                >
+              ).map((i) => sanitiseOutputItem(i))
+            }
+            forwardData = JSON.stringify(parsed)
+          } catch {
+            // [DONE] sentinel or truly malformed chunk
+            if (rawEvent.data !== "[DONE]") {
+              consola.warn(
+                "Could not parse Responses SSE chunk for logging:",
+                rawEvent.data.slice(0, 200),
+              )
+            }
           }
         }
+
+        await stream.writeSSE({
+          event: rawEvent.event,
+          data: forwardData,
+        })
       }
     },
     async (err, stream) => {

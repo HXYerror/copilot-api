@@ -33,7 +33,13 @@ export function sanitiseResponsesOutput(
   }
 }
 
-function sanitiseOutputItem(item: ResponsesOutputItem): ResponsesOutputItem {
+/**
+ * Sanitise a single output item from an SSE event or non-streaming response.
+ * Exported so the streaming path can apply the same logic per-event.
+ */
+export function sanitiseOutputItem(
+  item: ResponsesOutputItem,
+): ResponsesOutputItem {
   // Cast to the loose type so the null-status check is valid at compile time.
   const loose = item as unknown as LooseOutputItem
   if (loose.status === null) {

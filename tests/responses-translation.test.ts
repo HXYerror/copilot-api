@@ -32,19 +32,47 @@ describe("sanitiseResponsesOutput", () => {
     expect(reasoning.encrypted_content).toBe("opaque-blob-xyz")
   })
 
-  test("strips status: null from reasoning items", () => {
+  test("strips status: null from reasoning items (and preserves encrypted_content)", () => {
+    // Explicitly inject status: null — upstream sends this despite TS types forbidding it
     const response = makeResponse([
       {
         type: "reasoning",
         id: "rs_null_status",
         encrypted_content: "blob",
-        // status is null — TypeScript won't allow this directly but upstream sends it
+        status: null,
       } as unknown as ResponsesResponse["output"][0],
     ])
 
     const result = sanitiseResponsesOutput(response)
     const item = result.output[0] as Record<string, unknown>
+    // status must be stripped
     expect("status" in item).toBe(false)
+    // encrypted_content must survive
+    expect(item["encrypted_content"]).toBe("blob")
+  })
+
+  test("preserves status: in_progress unchanged", () => {
+    const response = makeResponse([
+      {
+        type: "reasoning",
+        id: "rs_inprogress",
+        status: "in_progress",
+      },
+    ])
+    const result = sanitiseResponsesOutput(response)
+    expect((result.output[0] as { status: string }).status).toBe("in_progress")
+  })
+
+  test("preserves status: incomplete unchanged", () => {
+    const response = makeResponse([
+      {
+        type: "reasoning",
+        id: "rs_incomplete",
+        status: "incomplete",
+      },
+    ])
+    const result = sanitiseResponsesOutput(response)
+    expect((result.output[0] as { status: string }).status).toBe("incomplete")
   })
 
   test("preserves non-null status on reasoning items", () => {
