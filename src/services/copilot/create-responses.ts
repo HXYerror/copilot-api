@@ -1,3 +1,5 @@
+import type { ServerSentEventMessage } from "fetch-event-stream"
+
 import consola from "consola"
 import { events } from "fetch-event-stream"
 
@@ -52,7 +54,11 @@ export function isAgentCall(payload: ResponsesPayload): boolean {
 // Service client
 // ---------------------------------------------------------------------------
 
-export const createResponses = async (payload: ResponsesPayload) => {
+export const createResponses = async (
+  payload: ResponsesPayload,
+): Promise<
+  ResponsesResponse | AsyncGenerator<ServerSentEventMessage, void, unknown>
+> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
 
   const enableVision = inputHasImages(payload)
@@ -81,13 +87,4 @@ export const createResponses = async (payload: ResponsesPayload) => {
   }
 
   return (await response.json()) as ResponsesResponse
-}
-
-// ---------------------------------------------------------------------------
-// Streaming event types for Responses API SSE
-// ---------------------------------------------------------------------------
-
-export interface ResponseStreamEvent {
-  type: string // "response.created" | "response.output_text.delta" | etc.
-  [key: string]: unknown
 }
