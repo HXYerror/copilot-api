@@ -36,7 +36,8 @@ interface ModelCapabilities {
   object: string
   supports: ModelSupports
   tokenizer: string
-  type: string
+  /** Known values: "chat" | "responses". Open string for forward-compat. */
+  type: "chat" | "responses" | (string & {})
 }
 
 export interface Model {

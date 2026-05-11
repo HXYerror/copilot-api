@@ -26,6 +26,9 @@ export type ModelMode = "chat" | "responses"
  * "responses" = must use /responses; "chat" = use /chat/completions (or native Anthropic).
  */
 export function getModelMode(modelId: string): ModelMode {
+  // Guard: treat missing/empty model as "chat" — upstream will reject with a proper error
+  if (!modelId) return "chat"
+
   // 1. Check state.models capabilities if available (future-proof)
   if (state.models?.data) {
     const entry = state.models.data.find((m) => m.id === modelId)
@@ -43,7 +46,8 @@ export function getModelMode(modelId: string): ModelMode {
  */
 export function isResponsesOnlyModel(modelId: string): boolean {
   // codex family: gpt-5-codex, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.3-codex, etc.
-  if (modelId.includes("codex")) return true
+  // Anchored to word boundaries to avoid matching hypothetical future "codex-mini" chat models.
+  if (/(?:^|-)codex(?:-|$)/.test(modelId)) return true
   // o-pro family: o1-pro, o3-pro, o1-pro-2025-04-09, o3-pro-2025-01-10, etc.
   // Covers: o\d+-pro(?:-\d{4}-\d{2}-\d{2})? — requires string to end after "pro" or date
   if (/^o\d+-pro(?:-\d{4}-\d{2}-\d{2})?$/.test(modelId)) return true
