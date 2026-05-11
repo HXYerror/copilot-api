@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 
 import { forwardError } from "~/lib/error"
+import { getModelMode } from "~/lib/model-routing"
 import { state } from "~/lib/state"
 import { cacheModels } from "~/lib/utils"
 
@@ -21,6 +22,7 @@ modelRoutes.get("/", async (c) => {
       created_at: new Date(0).toISOString(), // No date available from source
       owned_by: model.vendor,
       display_name: model.name,
+      mode: getModelMode(model.id),
     }))
 
     return c.json({
